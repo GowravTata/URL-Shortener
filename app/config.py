@@ -15,3 +15,9 @@ POSTGRES_PORT = os.getenv('POSTGRES_PORT')
 REDIS_HOST = os.getenv('REDIS_HOST')
 REDIS_PORT = os.getenv('REDIS_PORT')
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
+
+# Application messages
+URL_SHORTENED_ALREADY= "URL already shortened"
+URL_SHORTENED_SUCCESSFULLY= "URL shortened successfully"
+URL_EXISTS= "URL Exists"
+URL_DOESNT_EXIST= "URL Doesn't exist"
