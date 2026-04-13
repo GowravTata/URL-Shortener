@@ -4,11 +4,12 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
+
 # -----------------------
 # MODEL
 # -----------------------
 class URLModel(Base):
-    __tablename__ = 'url_shortener'
+    __tablename__ = "url_shortener"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     long_url = Column(Text, nullable=False)
