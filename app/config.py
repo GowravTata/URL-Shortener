@@ -21,3 +21,6 @@ URL_SHORTENED_ALREADY= "URL already shortened"
 URL_SHORTENED_SUCCESSFULLY= "URL shortened successfully"
 URL_EXISTS= "URL Exists"
 URL_DOESNT_EXIST= "URL Doesn't exist"
+# Field names for database lookups and responses
+LONG_URL='long_url'
+SHORT_URL='short_url'
