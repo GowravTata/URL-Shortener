@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session
 from app.config import (
     DOMAIN,
     SHORT_CODE,
-    LONG_URL,
     URL_SHORTENED_SUCCESSFULLY,
     URL_DOESNT_EXIST,
     URL_EXPIRED,
@@ -68,8 +67,9 @@ def shorten_url(
 
         # Creating the short URL and updating the database entry
         short_url = DOMAIN + (custom_alias if custom_alias else short_code)
+        short_code = custom_alias if custom_alias else short_code
         # Update the new entry with the short URL and expiry date, then commit the changes
-        new_entry.short_code = custom_alias if custom_alias else short_code
+        new_entry.short_code = short_code
         new_entry.short_url = short_url
         new_entry.expiry = expiry_dt
         db.commit()
@@ -82,7 +82,11 @@ def shorten_url(
         )
         redis.set(key=short_code, value=long_url, ex=86400)
         logger.info(f"Short URL created and cached successfully: {short_code}")
-        return {"message": URL_SHORTENED_SUCCESSFULLY, "short_url": short_url}
+        return {
+            "message": URL_SHORTENED_SUCCESSFULLY,
+            "short_url": short_url,
+            "short_code": short_code,
+        }
     except (Exception, IntegrityError) as e:
         logger.exception(f"Error: {str(e)}")
         raise e
@@ -148,6 +152,40 @@ def get_long_url(short_code: str, db: Session) -> dict:
     except Exception as e:
         logger.exception(
             f"Unexpected error during cache lookup for key: {short_code}. Error: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+    
+def get_short_code_info(short_code: str, db: Session) -> dict:
+    """
+    Retrieve the long URL and expiry information for a given short code if it exists.
+    """
+    try:
+        logger.info(f"Retrieving info for short code: {short_code}")
+        record = get_record_by_field(
+            db=db, model=URLModel, field=SHORT_CODE, value=short_code
+        )
+        if not record:
+            logger.exception(f"Short code not found in database: {short_code}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=SHORT_CODE_DOESNOT_EXIST,
+            )
+        return {
+            "long_url": record.long_url,
+            "created_at": record.created_at.isoformat(),
+            "expiry": record.expiry.isoformat() if record.expiry else None,
+        }
+    except HTTPException as e:
+        logger.exception(
+            f"HTTPException occurred while retrieving info for short code: {short_code}. Detail: {e.detail}"
+        )
+        raise e
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error while retrieving info for short code: {short_code}. Error: {str(e)}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

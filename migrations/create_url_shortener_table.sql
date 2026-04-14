@@ -11,4 +11,6 @@ CREATE TABLE url_shortener (
     expiry timestamp
 );
 
+TRUNCATE TABLE url_shortener RESTART IDENTITY;
+
 SELECT * FROM url_shortener;
