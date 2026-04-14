@@ -1,4 +1,11 @@
+import json
+from datetime import datetime
+
+from fastapi import HTTPException, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
 from app.config import (
     DOMAIN,
     SHORT_CODE,
@@ -7,20 +14,14 @@ from app.config import (
     URL_EXPIRED,
     SHORT_CODE_DOESNOT_EXIST,
 )
+from app.db import redis_conn as redis
 from app.models.url import URLModel
 from app.utils import (
     get_record_by_field,
-    RedisCache,
     AppLogger,
     get_expiry_date,
+    generate_code,
 )
-from app.db import redis_conn as redis
-from datetime import datetime
-from fastapi import HTTPException, status
-from fastapi.responses import RedirectResponse
-from sqlalchemy.exc import IntegrityError
-from app.utils import generate_code
-import json
 
 logger = AppLogger().get_logger()
 
@@ -29,7 +30,6 @@ def shorten_url(
     long_url: str, custom_alias: str | None, expiry: str | None, db: Session
 ) -> dict:
     try:
-        redis = RedisCache()
         # Creating all the required variables for the new record
         expires_at = get_expiry_date(expiry)
         system_generated_code = generate_code()
@@ -217,7 +217,6 @@ def delete_short_url(short_code: str, db: Session) -> dict:
         db.delete(record)
         db.commit()
         logger.info(f"Short URL deleted from database: {short_code}")
-        redis = RedisCache()
         logger.info(f"Cache cleared for short URL: {short_code}")
 
         redis.delete(key=short_code)
