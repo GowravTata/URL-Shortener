@@ -1,13 +1,42 @@
 import logging
 import os
-import hashlib
-import base64
+import string
+
 
 from app.db import redis_conn
 from sqlalchemy.orm import Session
 from typing import Any, Optional
 from fastapi import HTTPException, status
 from app.config import URL_EXISTS
+from datetime import datetime, timedelta
+
+
+BASE62_CHARS = string.ascii_letters + string.digits
+BASE = len(BASE62_CHARS)
+
+
+def encode_base62(num: int) -> str:
+    """Convert integer to Base62 string"""
+    logger = AppLogger().get_logger()
+    logger.info(f"Encoding number to Base62: {num}")
+    if num == 0:
+        return BASE62_CHARS[0]
+
+    result = []
+    while num > 0:
+        remainder = num % BASE
+        result.append(BASE62_CHARS[remainder])
+        num //= BASE
+
+    return "".join(reversed(result))
+
+
+def decode_base62(short_code: str) -> int:
+    """Convert Base62 string back to integer (optional)"""
+    num = 0
+    for char in short_code:
+        num = num * BASE + BASE62_CHARS.index(char)
+    return num
 
 
 class AppLogger:
@@ -35,17 +64,6 @@ class AppLogger:
             logger.addHandler(stream_handler)
             logger.setLevel(logging.INFO)
         return logger
-
-
-def shorten_text(text):
-    # Create hash
-    hash_object = hashlib.sha256(text.encode())
-    hash_bytes = hash_object.digest()
-
-    # Convert to Base64 and trim
-    short_code = base64.urlsafe_b64encode(hash_bytes).decode()[:6]
-
-    return short_code
 
 
 class RedisCache:
@@ -116,7 +134,7 @@ def get_record_by_field(
         logger.info(
             f"Querying database for {model.__name__} where {field} = {value}"
         )
-        return db.query(model).filter(getattr(model, field) == value).first()
+        return db.query(model).filter(getattr(model, field) == value).all()
     except Exception as e:
         logger.exception(
             f"Error querying database for {model.__name__} where {field} = {value}. Error: {str(e)}"
@@ -189,3 +207,27 @@ def cache_lookup(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",
         )
+
+
+def get_expiry_date(expiry: Optional[int]) -> Optional[datetime]:
+    """
+    Utility to calculate the expiry datetime based on the provided expiry duration in seconds.
+    If expiry is None, it returns None (indicating no expiration).
+    """
+    logger = AppLogger().get_logger()
+    if expiry:
+        try:
+            expiry_dt = datetime.fromisoformat(expiry)
+            if expiry_dt < datetime.now():
+                logger.warning(
+                    f"Provided expiry date {expiry} is in the past. Setting expiry to 30 days from now."
+                )
+                expiry_dt = datetime.now() + timedelta(days=30)
+        except Exception:
+            logger.warning(
+                f"Invalid expiry format: {expiry}, using default 30 days."
+            )
+            expiry_dt = datetime.now() + timedelta(days=30)
+    else:
+        expiry_dt = datetime.now() + timedelta(days=30)
+    return expiry_dt

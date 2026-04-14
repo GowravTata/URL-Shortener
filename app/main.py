@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from app.routes import db_router
+from app.routes.url import db_router
+
 
 app = FastAPI(
     title="URL Shortener API",
