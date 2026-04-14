@@ -1,6 +1,7 @@
 import logging
 import os
 import string
+import random
 
 
 from app.db import redis_conn
@@ -9,6 +10,8 @@ from typing import Any, Optional
 from fastapi import HTTPException, status
 from app.config import URL_EXISTS
 from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from app.models.url import URLModel
 
 
 BASE62_CHARS = string.ascii_letters + string.digits
@@ -29,14 +32,6 @@ def encode_base62(num: int) -> str:
         num //= BASE
 
     return "".join(reversed(result))
-
-
-def decode_base62(short_code: str) -> int:
-    """Convert Base62 string back to integer (optional)"""
-    num = 0
-    for char in short_code:
-        num = num * BASE + BASE62_CHARS.index(char)
-    return num
 
 
 class AppLogger:
@@ -96,7 +91,7 @@ class RedisCache:
         logger = AppLogger().get_logger()
         try:
             logger.info(f"Getting Redis cache for key: {key}")
-            return self.redis_conn.get(key)
+            return self.redis_conn.get(f"url:{key}")
         except Exception as e:
             logger.exception(
                 f"Error getting Redis cache for key: {key}. Error: {str(e)}"
@@ -231,3 +226,27 @@ def get_expiry_date(expiry: Optional[int]) -> Optional[datetime]:
     else:
         expiry_dt = datetime.now() + timedelta(days=30)
     return expiry_dt
+
+
+def generate_code(length: int = 7) -> str:
+    """
+    Generate a random Base62 short code.
+    """
+    return "".join(random.choices(BASE62_CHARS, k=length))
+
+
+def generate_unique_code(db: Session, max_retries: int = 5) -> str:
+    """
+    Generate a unique short_code by checking DB.
+    """
+    for _ in range(max_retries):
+        code = generate_code()
+        # Check if the generated code already exists in the database
+        exists = (
+            db.query(URLModel.id).filter(URLModel.short_code == code).first()
+        )
+        # If it doesn't exist, return the code
+        if not exists:
+            return code
+
+    raise Exception("Failed to generate unique short code after retries")

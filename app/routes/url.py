@@ -56,4 +56,4 @@ async def gets_short_code_info(
 async def deletes_short_url(
     short_code: str, db: Session = Depends(get_db)
 ) -> dict:
-    return delete_short_url(short_url=short_code, db=db)
+    return delete_short_url(short_code=short_code, db=db)

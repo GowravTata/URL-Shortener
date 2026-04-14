@@ -12,13 +12,15 @@ from app.utils import (
     get_record_by_field,
     RedisCache,
     AppLogger,
-    encode_base62,
     get_expiry_date,
 )
+from app.db import redis_conn as redis
 from datetime import datetime
 from fastapi import HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import IntegrityError
+from app.utils import generate_code
+import json
 
 logger = AppLogger().get_logger()
 
@@ -26,70 +28,49 @@ logger = AppLogger().get_logger()
 def shorten_url(
     long_url: str, custom_alias: str | None, expiry: str | None, db: Session
 ) -> dict:
-    """
-    Shorten a given long URL.
-    """
-    new_entry = None
     try:
         redis = RedisCache()
-        logger.info(f"Shortening URL: {long_url}")
+        # Creating all the required variables for the new record
+        expires_at = get_expiry_date(expiry)
+        system_generated_code = generate_code()
+        short_code = custom_alias or system_generated_code
+        short_url = DOMAIN + short_code
+        # Inserting the new record into the database
+        new_entry = URLModel(
+            long_url=long_url,
+            short_code=short_code,
+            short_url=short_url,
+            expires_at=expires_at,
+        )
 
-        if custom_alias:
-            # If a custom short code is provided, check if it already exists for this long URL
-            # Check if the long URL already exists in the database
-            short_code_record = get_record_by_field(
-                db=db, model=URLModel, field=SHORT_CODE, value=custom_alias
-            )
-            if short_code_record:
-                logger.warning(
-                    f"Custom Alias {custom_alias} already exists. Please choose a different custom alias."
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"message": "Custom Alias already exists"},
-                )
-
-        # Adding entry into the database
-        new_entry = URLModel(long_url=long_url)
         db.add(new_entry)
         db.commit()
-        db.refresh(new_entry)
 
-        # If no custom short URL is provided, generate one using the entry ID
-        if not custom_alias:
-            short_code = encode_base62(new_entry.id)
-            logger.info(
-                f"Generated short code: {short_code} for long URL: {long_url}"
-            )
-
-        # Parse expiry if provided, else set to 30 days from now
-        expiry_dt = get_expiry_date(expiry)
-
-        # Creating the short URL and updating the database entry
-        short_url = DOMAIN + (custom_alias if custom_alias else short_code)
-        short_code = custom_alias if custom_alias else short_code
-        # Update the new entry with the short URL and expiry date, then commit the changes
-        new_entry.short_code = short_code
-        new_entry.short_url = short_url
-        new_entry.expiry = expiry_dt
-        db.commit()
-        db.refresh(new_entry)
-        logger.info(f"Database commit successful for Short URL: {short_code}")
-
-        # Cache the new short code for future lookups
-        logger.info(
-            f"Caching new short URL: {short_url} for long URL: {long_url}"
+        # Store a JSON string in Redis with the long URL and expiry information
+        redis.set(
+            f"url:{short_code}", json.dumps({"long_url": long_url}), ex=86400
         )
-        redis.set(key=short_code, value=long_url, ex=86400)
-        logger.info(f"Short URL created and cached successfully: {short_code}")
+        # Setting the click count to 0 in Redis
+        # with an expiration time of 24 hours (86400 seconds)
+        redis.set(f"click:{short_code}", 0, ex=86400)
+
         return {
             "message": URL_SHORTENED_SUCCESSFULLY,
             "short_url": short_url,
             "short_code": short_code,
         }
-    except (Exception, IntegrityError) as e:
-        logger.exception(f"Error: {str(e)}")
-        raise e
+
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Custom Alias already exists",
+        )
+    except Exception as e:
+        logger.exception(f"Error occurred while shortening URL: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
 
 
 def get_long_url(short_code: str, db: Session) -> dict:
@@ -99,16 +80,26 @@ def get_long_url(short_code: str, db: Session) -> dict:
     try:
         logger = AppLogger().get_logger()
         # First check Redis cache for the key
-        redis = RedisCache()
         logger.info(f"Looking up key: {short_code} in Redis cache")
-        cached = redis.get(key=short_code)
+        key = f"url:{short_code}"
+        cached = redis.get(key)
         # If found in cache, return immediately
         if cached:
             logger.info(
                 f"Cache hit for key: {short_code}. Returning cached value."
             )
+            # Since we stored a JSON string in Redis, we need to parse it back to a dictionary
+            json_data = json.loads(cached)
+            long_url = json_data.get("long_url")
+            redis.incr(f"click:{short_code}")
+            record = get_record_by_field(
+                db=db, model=URLModel, field=SHORT_CODE, value=short_code
+            )
+            if record:
+                record.click_count += 1
+                db.commit()
             return RedirectResponse(
-                url=cached, status_code=status.HTTP_302_FOUND
+                url=long_url, status_code=status.HTTP_302_FOUND
             )
         logger.info(f"Cache miss for key: {short_code}. Checking database...")
         record = get_record_by_field(
@@ -122,7 +113,7 @@ def get_long_url(short_code: str, db: Session) -> dict:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=URL_DOESNT_EXIST
             )
-        if record and record.expiry < datetime.now():
+        if record and record.expires_at < datetime.now():
             logger.exception(f"URL Expired in database: {short_code}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=URL_EXPIRED
@@ -136,7 +127,17 @@ def get_long_url(short_code: str, db: Session) -> dict:
         logger.info(
             f"Caching result for key: {short_code} with value: {result_value} in Redis"
         )
-        redis.set(key=short_code, value=result_value, ex=86400)
+        ttl = (
+            record.expires_at
+            and int((record.expires_at - datetime.utcnow()).total_seconds())
+            or 86400
+        )
+        # Store a JSON string in Redis with the long URL and expiry information, using the calculated TTL
+        redis.set(
+            f"url:{short_code}", json.dumps({"long_url": result_value}), ex=ttl
+        )
+        # Setting the click count to 0 in Redis with an expiration time of 24 hours (86400 seconds)
+        redis.set(f"click:{short_code}", 0, ex=86400)
         logger.info(
             f"Result cached successfully for key: {short_code}. Returning value."
         )
@@ -157,7 +158,8 @@ def get_long_url(short_code: str, db: Session) -> dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",
         )
-    
+
+
 def get_short_code_info(short_code: str, db: Session) -> dict:
     """
     Retrieve the long URL and expiry information for a given short code if it exists.
@@ -175,8 +177,12 @@ def get_short_code_info(short_code: str, db: Session) -> dict:
             )
         return {
             "long_url": record.long_url,
+            "click_count": record.click_count,
             "created_at": record.created_at.isoformat(),
-            "expiry": record.expiry.isoformat() if record.expiry else None,
+            "expiry": (
+                record.expires_at.isoformat() if record.expires_at else None
+            ),
+            "is_deleted": record.is_deleted,
         }
     except HTTPException as e:
         logger.exception(
@@ -213,6 +219,7 @@ def delete_short_url(short_code: str, db: Session) -> dict:
         logger.info(f"Short URL deleted from database: {short_code}")
         redis = RedisCache()
         logger.info(f"Cache cleared for short URL: {short_code}")
+
         redis.delete(key=short_code)
         return {"message": "URL deleted successfully"}
     except Exception as e:

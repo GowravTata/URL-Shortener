@@ -1,1 +1,1 @@
-docker run --rm   --network host   -v /home/ubuntu/Desktop/URL-Shortener/jmeter:/test   -w /test   justb4/jmeter   -n -t /test/url_shortener_post_test.jmx -l /test/results.jtl
+docker run --rm   --network host   -v /home/ubuntu/Desktop/URL-Shortener/jmeter:/test   -w /test   justb4/jmeter   -n -t /test/sample_test.jmx -l /test/results.jtl
