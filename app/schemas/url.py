@@ -16,7 +16,7 @@ class ShortenRequest(BaseModel):
             "example": {
                 "long_url": "https://www.amazon.com",
                 "custom_alias": "az.com",
-                "expiry": "2026-12-31T23:59:59",
+                "expiry": "2026-04-30T23:59:59",
             }
         }
     )

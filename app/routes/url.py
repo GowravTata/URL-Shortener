@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.services.url_service import (
-    delete_long_url,
+    delete_short_url,
     shorten_url,
     get_long_url,
 )
@@ -25,26 +25,28 @@ async def shorten(
     request: ShortenRequest, db: Session = Depends(get_db)
 ) -> dict:
     return shorten_url(
-        long_url=request.long_url, short_url=request.custom_alias, expiry=request.expiry, db=db
+        long_url=request.long_url,
+        custom_alias=request.custom_alias,
+        expiry=request.expiry,
+        db=db,
     )
 
 
 @db_router.get(
-    "/long_url",
+    "/{short_code}",
     summary="Get long URL",
     description="Retrieve the long URL for a given short URL if it " "exists",
 )
-async def gets_long_url(short_url: str, db: Session = Depends(get_db)) -> dict:
-    return get_long_url(short_url=short_url, db=db)
+async def gets_long_url(short_code: str, db: Session = Depends(get_db)) -> dict:
+    return get_long_url(short_code=short_code, db=db)
 
 
 @db_router.delete(
-    "/delete_long_url",
-    summary="Delete long URL",
-    description="Delete a long URL and its corresponding short"
-    " URL from the database and cache",
+    "/{short_code}",
+    summary="Delete Short URL",
+    description="Delete a Short URL and its corresponding long URL from the database and cache",
 )
-async def deletes_long_url(
-    long_url: str, db: Session = Depends(get_db)
+async def deletes_short_url(
+    short_code: str, db: Session = Depends(get_db)
 ) -> dict:
-    return delete_long_url(long_url=long_url, db=db)
+    return delete_short_url(short_url=short_code, db=db)

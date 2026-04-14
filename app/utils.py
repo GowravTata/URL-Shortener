@@ -134,7 +134,7 @@ def get_record_by_field(
         logger.info(
             f"Querying database for {model.__name__} where {field} = {value}"
         )
-        return db.query(model).filter(getattr(model, field) == value).all()
+        return db.query(model).filter(getattr(model, field) == value).first()
     except Exception as e:
         logger.exception(
             f"Error querying database for {model.__name__} where {field} = {value}. Error: {str(e)}"
