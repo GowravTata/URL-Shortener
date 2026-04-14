@@ -1,8 +1,19 @@
+from app.routes.url import url_router
 from fastapi import FastAPI
-from app.routes import db_router
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="URL Shortener API",
-              description="A simple URL shortener API built with FastAPI", 
-              version="1.0.0")
+app = FastAPI(
+    title="URL Shortener API",
+    description="A simple URL shortener API built with FastAPI",
+    version="1.0.0",
+)
 
-app.include_router(router=db_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify allowed origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router=url_router)
