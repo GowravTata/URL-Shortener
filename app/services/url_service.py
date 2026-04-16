@@ -30,6 +30,12 @@ def shorten_url(
     long_url: str, custom_alias: str | None, expiry: str | None, db: Session
 ) -> dict:
     try:
+        reserved_aliases = {"admin", "login", "signup", "dashboard"}
+        if custom_alias and custom_alias in reserved_aliases:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Custom Alias is reserved. Please choose a different one.",
+            )
         # Creating all the required variables for the new record
         expires_at = get_expiry_date(expiry)
         system_generated_code = generate_code()

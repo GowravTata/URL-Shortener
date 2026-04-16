@@ -43,62 +43,6 @@ class AppLogger:
         return logger
 
 
-class RedisCache:
-    """
-    Simple Redis cache wrapper for get/set operations.
-    """
-
-    def __init__(self):
-        self.redis_conn = redis_conn
-
-    def set(self, key, value, ex=6000) -> None:
-        # Set a value in Redis with an expiration time
-        logger = AppLogger().get_logger()
-        try:
-            logger.info(
-                f"Setting Redis cache for key: {key} with value: {value} and expiration: {ex} seconds"
-            )
-            self.redis_conn.set(key, value, ex=ex)
-        except Exception as e:
-            logger.exception(
-                f"Error setting Redis cache for key: {key}. Error: {str(e)}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal Server Error",
-            )
-
-    def get(self, key) -> Optional[str]:
-        # Get a value from Redis by key
-        logger = AppLogger().get_logger()
-        try:
-            logger.info(f"Getting Redis cache for key: {key}")
-            return self.redis_conn.get(f"url:{key}")
-        except Exception as e:
-            logger.exception(
-                f"Error getting Redis cache for key: {key}. Error: {str(e)}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal Server Error",
-            )
-
-    def delete(self, key) -> None:
-        # Delete a key from Redis
-        logger = AppLogger().get_logger()
-        try:
-            logger.info(f"Deleting Redis cache for key: {key}")
-            self.redis_conn.delete(key)
-        except Exception as e:
-            logger.exception(
-                f"Error deleting Redis cache for key: {key}. Error: {str(e)}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal Server Error",
-            )
-
-
 def get_record_by_field(
     db: Session, model: Any, field: str, value: Any
 ) -> Optional[Any]:
