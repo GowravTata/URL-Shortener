@@ -14,7 +14,7 @@
           </elementProp>
           <elementProp name="short_code" elementType="Argument">
             <stringProp name="Argument.name">short_code</stringProp>
-            <stringProp name="Argument.value">c</stringProp>
+            <stringProp name="Argument.value">flip</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
         </collectionProp>
@@ -28,7 +28,7 @@
           <boolProp name="LoopController.continue_forever">false</boolProp>
           <stringProp name="LoopController.loops">1</stringProp>
         </elementProp>
-        <stringProp name="ThreadGroup.num_threads">100</stringProp>
+        <stringProp name="ThreadGroup.num_threads">230</stringProp>
         <stringProp name="ThreadGroup.ramp_time">10</stringProp>
         <longProp name="ThreadGroup.start_time">1610000000000</longProp>
         <longProp name="ThreadGroup.end_time">1610000000000</longProp>
