@@ -5,7 +5,9 @@ from app.services.url_service import (
     delete_short_url,
     shorten_url,
     get_long_url,
-    get_short_code_analytics)
+    get_short_code_info,
+    get_short_code_analytics,
+)
 from app.schemas.url import ShortenRequest
 
 
@@ -37,7 +39,6 @@ async def gets_long_url(short_code: str, db: Session = Depends(get_db)) -> dict:
     return get_long_url(short_code=short_code, db=db)
 
 
-
 @url_router.delete(
     "/{short_code}",
     summary="Delete Short URL",
@@ -49,8 +50,6 @@ async def deletes_short_url(
     return delete_short_url(short_code=short_code, db=db)
 
 
-
-
 @url_router.get(
     "/info/{short_code}",
     summary="Get Short URL metadata",
@@ -59,14 +58,13 @@ async def deletes_short_url(
 async def gets_short_code_info(
     short_code: str, db: Session = Depends(get_db)
 ) -> dict:
-    return get_short_code_analytics(short_code=short_code, db=db)
+    return get_short_code_info(short_code=short_code, db=db)
 
-@url_router.get("/analytics/{short_code}",    
+
+@url_router.get(
+    "/analytics/{short_code}",
     summary="Get Short URL Analytics",
     description="Retrieve analytics data for a given short URL, including click count and timestamps of clicks",
 )
-async def get_analytics(
-    short_code: str, db: Session = Depends(get_db)
-) -> dict:
-    return get_short_code_analytics(short_code=short_code, db=db, analytics=True)
-  
+async def get_analytics(short_code: str, db: Session = Depends(get_db)) -> dict:
+    return get_short_code_analytics(short_code=short_code, db=db)
