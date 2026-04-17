@@ -15,7 +15,7 @@ class ShortenRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "long_url": "https://www.amazon.com",
-                "custom_alias": "az.com",
+                "custom_alias": "az",
                 "expiry": "2026-04-30T23:59:59",
             }
         }

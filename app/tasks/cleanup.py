@@ -1,9 +1,10 @@
-from app.core.celery_app import celery_app
+from celery_app import celery_app
 from app.db import get_db
 from app.models.url import URLModel
 from app.utils import AppLogger
 from datetime import datetime
 from app.db import redis_conn as redis
+from sqlalchemy import or_
 
 logger = AppLogger().get_logger()
 
@@ -17,13 +18,26 @@ def cleanup_expired_urls():
         # Query for expired URLs
         expired_urls = (
             db.query(URLModel)
-            .filter(URLModel.expires_at < datetime.utcnow())
+            .filter(
+                or_(
+                    URLModel.expires_at < datetime.now(),
+                    URLModel.is_deleted.is_(True),
+                )
+            )
             .all()
         )
+        print('Reached here, expired urls are ', expired_urls)
         for url in expired_urls:
             # Delete from Redis
-            redis.delete(f"url:{url.short_code}")
-            redis.delete(f"click:{url.short_code}")
+            redis.hdel(
+                f"url:{url.short_code}",
+                "long_url",
+                "expires_at",
+                "click_count",
+                "last_accessed",
+                "is_deleted",
+                "created_at",
+            )
             # Delete from database
             db.delete(url)
         db.commit()

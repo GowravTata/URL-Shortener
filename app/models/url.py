@@ -17,5 +17,6 @@ class URLModel(Base):
     short_code = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)
+    last_accessed = Column(DateTime(timezone=True), nullable=True)
     is_deleted = Column(Boolean, default=False)
     click_count = Column(BigInteger, default=0)

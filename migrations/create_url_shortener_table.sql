@@ -10,6 +10,7 @@ CREATE TABLE url_shortener (
     long_url TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL,
+    last_accessed TIMESTAMP NULL,
     is_deleted BOOLEAN DEFAULT FALSE,
     click_count BIGINT DEFAULT 0
 );

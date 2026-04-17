@@ -1,10 +1,11 @@
 from celery import Celery
+from celery.schedules import crontab
 
 celery_app = Celery(
     "tasks",
     broker="redis://localhost:6379/0",
     backend="redis://localhost:6379/0",
-    include=["tasks.cleanup"],
+    include=["app.tasks.cleanup","app.tasks.db_flush"],
 )
 
 celery_app.conf.update(
@@ -17,7 +18,11 @@ celery_app.conf.update(
 
 celery_app.conf.beat_schedule = {
     "cleanup-expired-urls-every-hour": {
-        "task": "tasks.cleanup.cleanup_expired_urls",
-        "schedule": 3600.0,  # every hour
+        "task": "app.tasks.cleanup.cleanup_expired_urls",
+        "schedule": crontab(minute="*/2"),  # every hour
+    },
+    "flush-db-every-30-minutes": {
+        "task": "app.tasks.db_flush.flush_db",
+        "schedule": crontab(minute="*/30"),  # every 30 minutes
     },
 }
