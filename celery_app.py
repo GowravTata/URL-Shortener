@@ -19,7 +19,7 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "cleanup-expired-urls-every-hour": {
         "task": "app.tasks.cleanup.cleanup_expired_urls",
-        "schedule": crontab(minute="*/2"),  # every hour
+        "schedule": crontab(minute="0", hour="*"),  # every hour
     },
     "flush-db-every-30-minutes": {
         "task": "app.tasks.db_flush.flush_db",
