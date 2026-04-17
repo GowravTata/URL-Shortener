@@ -2,18 +2,138 @@ import logging
 import os
 import random
 import string
+import time
+from collections import defaultdict, deque
+from threading import Lock
 from datetime import datetime, timedelta
 from typing import Any, Optional
-
-from fastapi import HTTPException, status
+import ipaddress
+from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
+from fastapi import Request, status
 
-from app.db import redis_conn
 from app.models.url import URLModel
 
 
 BASE62_CHARS = string.ascii_letters + string.digits
 BASE = len(BASE62_CHARS)
+
+_rate_buckets: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+_rate_lock = Lock()
+
+
+RATE_WINDOW_SECONDS = int(os.getenv("RATE_WINDOW_SECONDS", "60"))
+SHORTEN_RATE_LIMIT = int(os.getenv("SHORTEN_RATE_LIMIT", "30"))
+REDIRECT_RATE_LIMIT = int(os.getenv("REDIRECT_RATE_LIMIT", "300"))
+
+_rate_buckets: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+_rate_lock = Lock()
+
+
+def _is_rate_limited(ip: str, bucket: str, limit: int) -> bool:
+    now = time.time()
+    boundary = now - RATE_WINDOW_SECONDS
+    key = (ip, bucket)
+
+    with _rate_lock:
+        timestamps = _rate_buckets[key]
+        while timestamps and timestamps[0] < boundary:
+            timestamps.popleft()
+        if len(timestamps) >= limit:
+            return True
+        timestamps.append(now)
+    return False
+
+
+def service_error(status_code: int, code: str, message: str) -> None:
+    """Raise an HTTPException with structured detail for uniform API errors."""
+    raise HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": message},
+    )
+
+
+def _error_payload(request: Request, code: str, message: str) -> dict:
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+            "request_id": getattr(request.state, "request_id", "unknown"),
+        }
+    }
+
+
+def _is_private_or_local_hostname(hostname: str | None) -> bool:
+    if not hostname:
+        return True
+
+    host = hostname.strip().lower()
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    if host.endswith(".local"):
+        return True
+
+    try:
+        ip = ipaddress.ip_address(host)
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        )
+    except ValueError:
+        return False
+
+
+RATE_WINDOW_SECONDS = int(os.getenv("RATE_WINDOW_SECONDS", "60"))
+SHORTEN_RATE_LIMIT = int(os.getenv("SHORTEN_RATE_LIMIT", "30"))
+REDIRECT_RATE_LIMIT = int(os.getenv("REDIRECT_RATE_LIMIT", "300"))
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _is_suspicious_user_agent(user_agent: str | None) -> bool:
+    if not user_agent:
+        return True
+    ua = user_agent.lower()
+    blocked_markers = ["sqlmap", "nikto", "masscan", "nmap", "curl/"]
+    return any(marker in ua for marker in blocked_markers)
+
+
+def _enforce_client_guard(request: Request) -> None:
+    user_agent = request.headers.get("user-agent")
+    if _is_suspicious_user_agent(user_agent):
+        service_error(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="blocked_client",
+            message="Request blocked by client protection policy",
+        )
+
+
+def enforce_shorten_guard(request: Request) -> None:
+    _enforce_client_guard(request)
+    if _is_rate_limited(_client_ip(request), "shorten", SHORTEN_RATE_LIMIT):
+        service_error(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            code="rate_limit_exceeded",
+            message="Rate limit exceeded for URL shortening",
+        )
+
+
+def enforce_redirect_guard(request: Request) -> None:
+    _enforce_client_guard(request)
+    if _is_rate_limited(_client_ip(request), "redirect", REDIRECT_RATE_LIMIT):
+        service_error(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            code="rate_limit_exceeded",
+            message="Rate limit exceeded for redirects",
+        )
 
 
 class AppLogger:

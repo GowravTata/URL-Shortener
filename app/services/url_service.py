@@ -11,7 +11,6 @@ from app.config import (
     URL_SHORTENED_SUCCESSFULLY,
     URL_DOESNT_EXIST,
     URL_EXPIRED,
-    SHORT_CODE_DOESNOT_EXIST,
 )
 from app.db import redis_conn as redis
 from app.models.url import URLModel
@@ -20,6 +19,8 @@ from app.utils import (
     AppLogger,
     get_expiry_date,
     generate_code,
+    service_error,
+    _is_private_or_local_hostname,
 )
 from urllib.parse import urlparse
 
@@ -27,24 +28,50 @@ logger = AppLogger().get_logger()
 
 
 def shorten_url(
-    long_url: str, custom_alias: str | None, expiry: str | None, db: Session
+    long_url: str,
+    custom_alias: str | None,
+    expiry: datetime | None,
+    db: Session,
 ) -> dict:
     try:
         parsed = urlparse(long_url)
         if parsed.scheme not in ("http", "https"):
             logger.exception(f"Invalid URL scheme for URL: {long_url}")
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid URL scheme",
+                code="invalid_url_scheme",
+                message="Invalid URL scheme",
             )
+        if _is_private_or_local_hostname(parsed.hostname):
+            logger.exception(
+                f"Blocked private/local URL target for shortener: {long_url}"
+            )
+            service_error(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="private_or_local_target",
+                message="Private, local, or loopback targets are not allowed",
+            )
+
+        if parsed.username or parsed.password:
+            logger.exception(
+                f"Blocked URL containing credentials in authority: {long_url}"
+            )
+            service_error(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="embedded_credentials_not_allowed",
+                message="URLs containing embedded credentials are not allowed",
+            )
+
+        custom_alias = custom_alias.strip().lower() if custom_alias else None
         reserved_aliases = {"admin", "login", "signup", "dashboard"}
         if custom_alias and custom_alias in reserved_aliases:
             logger.exception(
                 f"Custom alias '{custom_alias}' is reserved and cannot be used."
             )
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Custom Alias is reserved. Please choose a different one.",
+                code="reserved_alias",
+                message="Custom Alias is reserved. Please choose a different one.",
             )
         # Creating all the required variables for the new record
         expires_at = get_expiry_date(expiry)
@@ -96,15 +123,21 @@ def shorten_url(
         }
 
     except IntegrityError:
-        raise HTTPException(
+        service_error(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Custom Alias already exists",
+            code="alias_already_exists",
+            message="Custom Alias already exists",
         )
-    except (Exception, HTTPException) as e:
-        logger.exception(f"Error occurred while shortening URL: {str(e)}")
-        raise HTTPException(
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error occurred while shortening URL: {str(e)}"
+        )
+        service_error(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            code="internal_error",
+            message="Internal Server Error",
         )
 
 
@@ -125,8 +158,10 @@ def get_long_url(short_code: str, db: Session) -> dict:
             expires_at = cached.get("expires_at")
             if datetime.fromisoformat(expires_at) < datetime.utcnow():
                 logger.exception(f"URL Expired in cache: {short_code}")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=URL_EXPIRED
+                service_error(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    code="url_expired",
+                    message=URL_EXPIRED,
                 )
 
             # Since we stored a JSON string in Redis, we need to parse it back to a dictionary
@@ -147,22 +182,27 @@ def get_long_url(short_code: str, db: Session) -> dict:
             logger.exception(
                 f"Cache miss for key: {short_code}. No record found in database."
             )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=URL_DOESNT_EXIST
+            service_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="url_not_found",
+                message=URL_DOESNT_EXIST,
             )
         if record and record.expires_at < datetime.utcnow():
             logger.exception(f"URL Expired in database: {short_code}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=URL_EXPIRED
+            service_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="url_expired",
+                message=URL_EXPIRED,
             )
 
         if record.is_deleted:
             logger.exception(
                 f"Short code marked as deleted in database: {short_code}"
             )
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_410_GONE,
-                detail=SHORT_CODE_DOESNOT_EXIST,
+                code="URL Deleted",
+                message=URL_DOESNT_EXIST,
             )
         # If found in DB, cache the result and return it
         logger.info(
@@ -211,9 +251,10 @@ def get_long_url(short_code: str, db: Session) -> dict:
         logger.exception(
             f"Unexpected error during cache lookup for key: {short_code}. Error: {str(e)}"
         )
-        raise HTTPException(
+        service_error(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal Server Error",
+            code="internal_error",
+            message="Internal Server Error",
         )
 
 
@@ -228,9 +269,10 @@ def delete_short_url(short_code: str, db: Session) -> dict:
         )
         if not record:
             logger.exception(f"Short URL not found in database: {short_code}")
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=SHORT_CODE_DOESNOT_EXIST,
+                code="short_code_not_found",
+                message=URL_DOESNT_EXIST,
             )
         record.is_deleted = True
         db.commit()
@@ -262,8 +304,10 @@ def get_short_code_info(short_code: str, db: Session) -> dict:
                 < datetime.utcnow()
             ):
                 logger.exception(f"URL Expired in cache: {short_code}")
-                raise HTTPException(
-                    status_code=status.HTTP_410_GONE, detail=URL_EXPIRED
+                service_error(
+                    status_code=status.HTTP_410_GONE,
+                    code="url_expired",
+                    message=URL_EXPIRED,
                 )
 
             return {
@@ -277,22 +321,25 @@ def get_short_code_info(short_code: str, db: Session) -> dict:
         )
         if not record:
             logger.exception(f"Short code not found in database: {short_code}")
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=SHORT_CODE_DOESNOT_EXIST,
+                code="short_code_not_found",
+                message=URL_DOESNT_EXIST,
             )
         if record.is_deleted:
             logger.exception(
                 f"Short code marked as deleted in database: {short_code}"
             )
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=SHORT_CODE_DOESNOT_EXIST,
+                code="URL Deleted",
+                message=URL_DOESNT_EXIST,
             )
         if record.expires_at < datetime.utcnow():
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_410_GONE,
-                detail=URL_EXPIRED,
+                code="url_expired",
+                message=URL_EXPIRED,
             )
         return {
             "long_url": record.long_url,
@@ -309,9 +356,10 @@ def get_short_code_info(short_code: str, db: Session) -> dict:
         logger.exception(
             f"Unexpected error while retrieving info for short code: {short_code}. Error: {str(e)}"
         )
-        raise HTTPException(
+        service_error(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal Server Error",
+            code="internal_error",
+            message="Internal Server Error",
         )
 
 
@@ -332,8 +380,10 @@ def get_short_code_analytics(short_code: str, db: Session) -> dict:
                 < datetime.utcnow()
             ):
                 logger.exception(f"URL Expired in cache: {short_code}")
-                raise HTTPException(
-                    status_code=status.HTTP_410_GONE, detail=URL_EXPIRED
+                service_error(
+                    status_code=status.HTTP_410_GONE,
+                    code="url_expired",
+                    message=URL_EXPIRED,
                 )
 
             data = {
@@ -350,23 +400,26 @@ def get_short_code_analytics(short_code: str, db: Session) -> dict:
         )
         if not record:
             logger.exception(f"Short code not found in database: {short_code}")
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=SHORT_CODE_DOESNOT_EXIST,
+                code="short_code_not_found",
+                message=URL_DOESNT_EXIST,
             )
         if record.is_deleted:
             logger.exception(
                 f"Short code marked as deleted in database: {short_code}"
             )
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=SHORT_CODE_DOESNOT_EXIST,
+                code="URL Deleted",
+                message=URL_DOESNT_EXIST,
             )
         if record.expires_at < datetime.utcnow():
             logger.exception(f"URL Expired in database: {short_code}")
-            raise HTTPException(
+            service_error(
                 status_code=status.HTTP_410_GONE,
-                detail=URL_EXPIRED,
+                code="url_expired",
+                message=URL_EXPIRED,
             )
         return {
             "long_url": record.long_url,
@@ -385,7 +438,8 @@ def get_short_code_analytics(short_code: str, db: Session) -> dict:
         logger.exception(
             f"Unexpected error while retrieving info for short code: {short_code}. Error: {str(e)}"
         )
-        raise HTTPException(
+        service_error(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal Server Error",
+            code="internal_error",
+            message="Internal Server Error",
         )

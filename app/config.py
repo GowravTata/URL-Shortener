@@ -17,12 +17,10 @@ REDIS_PORT = os.getenv("REDIS_PORT")
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
 # Application messages
-URL_SHORTENED_ALREADY = "URL already shortened"
 URL_SHORTENED_SUCCESSFULLY = "URL shortened successfully"
 URL_EXISTS = "URL Exists"
 URL_DOESNT_EXIST = "URL Doesn't exist"
 URL_EXPIRED = "URL Expired"
-SHORT_CODE_DOESNOT_EXIST = "Short code doesn't exist"
 # Field names for database lookups and responses
 LONG_URL = "long_url"
 SHORT_CODE = "short_code"

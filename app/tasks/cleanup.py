@@ -26,18 +26,9 @@ def cleanup_expired_urls():
             )
             .all()
         )
-        print('Reached here, expired urls are ', expired_urls)
         for url in expired_urls:
             # Delete from Redis
-            redis.hdel(
-                f"url:{url.short_code}",
-                "long_url",
-                "expires_at",
-                "click_count",
-                "last_accessed",
-                "is_deleted",
-                "created_at",
-            )
+            redis.delete(f"url:{url.short_code}")
             # Delete from database
             db.delete(url)
         db.commit()

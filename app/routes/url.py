@@ -8,10 +8,20 @@ from app.services.url_service import (
     get_short_code_info,
     get_short_code_analytics,
 )
+from app.services.health_check import db_readiness
+from app.utils import (
+    enforce_redirect_guard,
+    enforce_shorten_guard,
+)
 from app.schemas.url import ShortenRequest
 
 
 url_router = APIRouter()
+
+
+@url_router.get("/ready")
+async def readiness():
+    return db_readiness()
 
 
 @url_router.post(
@@ -20,10 +30,12 @@ url_router = APIRouter()
     description="Convert a long URL into a short one",
 )
 async def shorten(
-    request: ShortenRequest, db: Session = Depends(get_db)
+    request: ShortenRequest,
+    _guard: None = Depends(enforce_shorten_guard),
+    db: Session = Depends(get_db),
 ) -> dict:
     return shorten_url(
-        long_url=request.long_url,
+        long_url=str(request.long_url),
         custom_alias=request.custom_alias,
         expiry=request.expiry,
         db=db,
@@ -35,7 +47,11 @@ async def shorten(
     summary="Get long URL",
     description="Retrieve the long URL for a given short URL if it " "exists",
 )
-async def gets_long_url(short_code: str, db: Session = Depends(get_db)) -> dict:
+async def gets_long_url(
+    short_code: str,
+    _guard: None = Depends(enforce_redirect_guard),
+    db: Session = Depends(get_db),
+) -> dict:
     return get_long_url(short_code=short_code, db=db)
 
 
