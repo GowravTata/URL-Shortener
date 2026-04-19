@@ -6,7 +6,7 @@ from datetime import datetime
 from app.db import redis_conn as redis
 from sqlalchemy import or_
 
-logger = AppLogger().get_logger()
+logger = AppLogger().
 
 
 @celery_app.task

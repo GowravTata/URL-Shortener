@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 import random
 import string
 import time
@@ -138,29 +139,79 @@ def enforce_redirect_guard(request: Request) -> None:
 
 class AppLogger:
     """
-    Centralized logger for the application. Logs to both file and console.
+    Centralized structured logger for the application.
+    Logs to both file and console in JSON format.
     """
 
     LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
     LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
-    @staticmethod
-    def get_logger(name: str = "url_shortener"):
-        if not os.path.exists(AppLogger.LOG_DIR):
-            os.makedirs(AppLogger.LOG_DIR, exist_ok=True)
-        logger = logging.getLogger(name)
-        if not logger.handlers:
-            file_handler = logging.FileHandler(AppLogger.LOG_FILE)
+    def __init__(self, name: str = "url_shortener"):
+        if not os.path.exists(self.LOG_DIR):
+            os.makedirs(self.LOG_DIR, exist_ok=True)
+
+        self.logger = logging.getLogger(name)
+
+        if not self.logger.handlers:
+            file_handler = logging.FileHandler(self.LOG_FILE)
             stream_handler = logging.StreamHandler()
-            formatter = logging.Formatter(
+
+            formatter =  logging.Formatter(
                 "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-            )
+            ) # pure JSON
+
             file_handler.setFormatter(formatter)
             stream_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-            logger.addHandler(stream_handler)
-            logger.setLevel(logging.INFO)
-        return logger
+
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(stream_handler)
+
+            self.logger.setLevel(logging.INFO)
+
+    # 🔹 Core structured log method
+    def _log(self, level, message, request=None, **kwargs):
+        log_data = {
+            "message": message,
+            **kwargs,
+        }
+
+        if request:
+            log_data.update(
+                {
+                    "request_id": getattr(request.state, "request_id", None),
+                    "path": str(request.url.path),
+                    "method": request.method,
+                }
+            )
+
+        self.logger.log(level, json.dumps(log_data))
+
+    # 🔹 Log levels
+    def info(self, message, request=None, **kwargs):
+        self._log(logging.INFO, message, request, **kwargs)
+
+    def warning(self, message, request=None, **kwargs):
+        self._log(logging.WARNING, message, request, **kwargs)
+
+    def error(self, message, request=None, **kwargs):
+        self._log(logging.ERROR, message, request, **kwargs)
+
+    def debug(self, message, request=None, **kwargs):
+        self._log(logging.DEBUG, message, request, **kwargs)
+
+    def exception(self, message, request=None, **kwargs):
+        log_data = {
+            "message": message,
+            **kwargs,
+        }
+
+        if request:
+            log_data["request_id"] = getattr(request.state, "request_id", None)
+
+        self.logger.exception(json.dumps(log_data))
+
+    def get_logger(self):
+        return self
 
 
 def get_record_by_field(
@@ -170,7 +221,7 @@ def get_record_by_field(
     Generic utility to fetch a record from the database by a given field and value.
     Example: get_record_by_field(db, URLModel, 'long_url', long_url)
     """
-    logger = AppLogger().get_logger()
+    logger = AppLogger()
     try:
         logger.info(
             f"Querying database for {model.__name__} where {field} = {value}"
@@ -191,7 +242,7 @@ def get_expiry_date(expiry: Optional[int]) -> Optional[datetime]:
     Utility to calculate the expiry datetime based on the provided expiry duration in seconds.
     If expiry is None, it returns None (indicating no expiration).
     """
-    logger = AppLogger().get_logger()
+    logger = AppLogger()
     if expiry:
         try:
             expiry_dt = datetime.fromisoformat(expiry)

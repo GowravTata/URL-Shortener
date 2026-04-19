@@ -24,7 +24,7 @@ from app.utils import (
 )
 from urllib.parse import urlparse
 
-logger = AppLogger().get_logger()
+logger = AppLogger()
 
 
 def shorten_url(

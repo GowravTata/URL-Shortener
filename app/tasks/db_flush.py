@@ -11,7 +11,7 @@ def flush_db():
     """Utility function to sync the click count from Redis to the database"""
     try:
         db = next(get_db())
-        logger = AppLogger().get_logger()
+        logger = AppLogger().
         logger.info("Starting database flush to sync click counts.")
         # Fetch all keys that match the pattern "click:* and last_accessed:*"
         click_keys = db.query(URLModel).all()
@@ -45,8 +45,12 @@ def flush_db():
 
             if updated:
                 db.commit()
-
+            logger.info(
+                "Finished syncing click counts and last accessed timestamps to the database."
+            )
     except Exception as e:
-        logger.error(f"Error syncing click counts: {e}")
+        logger.error(
+            f"Error syncing click counts or last accessed timestamps: {e}"
+        )
     finally:
         db.close()
