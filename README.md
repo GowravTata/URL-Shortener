@@ -221,7 +221,7 @@ terraform init
 
 terraform plan
 
-terraform apply
+terraform apply -var="region=us-east-1" -var="my_ip=<REPLACE_MY_IP>" -auto-approve
 ```
 
 Terraform automatically:
