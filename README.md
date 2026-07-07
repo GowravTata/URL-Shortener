@@ -221,10 +221,6 @@ Follow these steps to provision the infrastructure and deploy the application.
 
 ## Before You Begin
 
-- Install the following tools:
-  - Git
-  - Terraform
-  - Docker (for local development)
 - Create an AWS account with the required permissions.
 - Generate an SSH key pair:
 
@@ -245,7 +241,9 @@ terraform/my-ec2-key.pub
 ---
 
 ## Deploy
-cd terraform/
+
+```bash
+cd ~/url-shortener/terraform/
 
 terraform init
 
