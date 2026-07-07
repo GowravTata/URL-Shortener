@@ -183,7 +183,7 @@ This project provides a single setup script to install all required prerequisite
 ### Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/GowravTata/url-shortener.git
 cd url-shortener
 ```
 
