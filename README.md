@@ -176,6 +176,44 @@ terraform version
 ```
 
 ---
+## Install Prerequisites
+
+This project provides a single setup script to install all required prerequisites.
+
+### Clone the Repository
+
+```bash
+git clone <repository-url>
+cd url-shortener
+```
+
+### Make the Scripts Executable
+
+```bash
+chmod +x scripts/setup.sh
+chmod +x scripts/install-awscli.sh
+chmod +x scripts/install-terraform.sh
+```
+
+### Install AWS CLI & Terraform
+
+Run the setup script:
+
+```bash
+./scripts/setup.sh
+```
+
+The setup script will automatically:
+
+- Install AWS CLI
+- Install Terraform
+
+Once the script completes successfully, verify the installations:
+
+```bash
+aws --version
+terraform --version
+```
 
 # Quick Start
 
@@ -204,18 +242,10 @@ terraform/my-ec2-key.pub
   - Updating the `my_ip` variable in `terraform/variables.tf`, **or**
   - Passing it during deployment:
 
-```bash
-terraform apply -var="my_ip=<YOUR_PUBLIC_IP>" 
-```
-
 ---
 
 ## Deploy
-
-```bash
-git clone https://github.com/GowravTata/url-shortener.git
-
-cd url-shortener/terraform
+cd terraform/
 
 terraform init
 
